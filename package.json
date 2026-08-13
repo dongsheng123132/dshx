@@ -1,6 +1,6 @@
 {
   "name": "dshx",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Machine-friendly run, JSON, cwd, timeout, and doctor adapter for DeepSeek Harness",
   "type": "module",
   "bin": {

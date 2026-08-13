@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -21,6 +22,13 @@ function run(args, options = {}) {
     ...options
   });
 }
+
+test("CLI version stays aligned with package metadata", () => {
+  const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const result = run(["--version"]);
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.trim(), packageJson.version);
+});
 
 test("prints a clean text result", () => {
   const result = run(["run", "hello"]);

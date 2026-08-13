@@ -1,0 +1,30 @@
+{
+  "name": "dshx",
+  "version": "0.2.0",
+  "description": "Run bounded DeepSeek Harness tasks through a stable machine-readable adapter.",
+  "author": {
+    "name": "hfshfg",
+    "email": "38004547@qq.com",
+    "url": "https://github.com/dongsheng123132"
+  },
+  "homepage": "https://github.com/dongsheng123132/dshx",
+  "repository": "https://github.com/dongsheng123132/dshx",
+  "license": "MIT",
+  "keywords": ["deepseek", "dsh", "agent", "headless", "json"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "dshx",
+    "shortDescription": "Run DeepSeek Harness as a bounded worker",
+    "longDescription": "Delegates one task to DeepSeek Harness with explicit cwd, stdin, timeout, stable JSON output, and credential-safe readiness checks.",
+    "developerName": "hfshfg",
+    "category": "Developer Tools",
+    "capabilities": ["Structured delegation", "Bounded execution", "Readiness checks"],
+    "websiteURL": "https://github.com/dongsheng123132/dshx",
+    "defaultPrompt": [
+      "Delegate this bounded task to DeepSeek Harness and summarize the structured result.",
+      "Check whether dshx is ready to run on this machine.",
+      "Run DeepSeek Harness in this workspace with a safe timeout."
+    ],
+    "brandColor": "#0F766E"
+  }
+}

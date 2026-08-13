@@ -1,0 +1,20 @@
+{
+  "name": "dshx",
+  "interface": {
+    "displayName": "Dshx"
+  },
+  "plugins": [
+    {
+      "name": "dshx",
+      "source": {
+        "source": "local",
+        "path": "./plugins/dshx"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer"
+    }
+  ]
+}

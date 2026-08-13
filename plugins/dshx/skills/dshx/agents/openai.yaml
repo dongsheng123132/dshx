@@ -1,0 +1,4 @@
+interface:
+  display_name: "dshx"
+  short_description: "Run DeepSeek Harness as a machine-friendly worker"
+  default_prompt: "Delegate a bounded task to DeepSeek Harness and return its structured result."

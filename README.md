@@ -11,17 +11,30 @@ DeepSeek 负责 Harness Core；`dshx` 补齐脚本和其他 AI 更容易依赖�
 - `doctor`：检查 Node、dsh、凭据是否就绪，但绝不打印 Key
 - stdout 只放结果，stderr 只放诊断；非 TTY 不输出 spinner/ANSI
 
-> DeepSeek Harness 仍处于 Developer Preview，可能发生破坏性变化。`dshx 0.1.0` 锁定 `@deepseek-ai/dsh 0.1.0-rc.6`，升级前必须重新跑测试。
+> DeepSeek Harness 仍处于 Developer Preview，可能发生破坏性变化。`dshx 0.2.0` 锁定 `@deepseek-ai/dsh 0.1.0-rc.6`，升级前必须重新跑测试。
 
 ## 安装
 
 仓库发布后可直接从 GitHub 安装：
 
 ```bash
-npm install -g github:dongsheng123132/dshx
+npm install -g github:dongsheng123132/dshx#v0.2.0
 ```
 
 需要 Node.js 22.19+ 或 24+。
+
+### 安装到 Codex 插件市场
+
+```bash
+codex plugin marketplace add dongsheng123132/dshx --ref v0.2.0
+codex plugin add dshx@dshx
+```
+
+### 安装为通用 Agent Skill
+
+```bash
+npx skills add dongsheng123132/dshx --skill dshx --full-depth
+```
 
 ## 使用
 
