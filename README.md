@@ -1,5 +1,7 @@
 # dshx
 
+[![skills.sh](https://skills.sh/b/dongsheng123132/dshx)](https://skills.sh/dongsheng123132/dshx/dshx)
+
 `dshx` 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的机器友好调用层。
 
 DeepSeek 负责 Harness Core；`dshx` 补齐脚本和其他 AI 更容易依赖的外部契约：
@@ -35,6 +37,8 @@ codex plugin add dshx@dshx
 ```bash
 npx skills add dongsheng123132/dshx --skill dshx --full-depth
 ```
+
+该 Skill 已公开收录到 [skills.sh](https://skills.sh/dongsheng123132/dshx/dshx)，可被 Codex、Claude Code、Cursor、Kimi Code、OpenCode 等支持 Agent Skills 的客户端发现和安装。
 
 ## 使用
 
