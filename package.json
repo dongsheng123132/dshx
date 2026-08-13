@@ -1,0 +1,45 @@
+{
+  "name": "dshx",
+  "version": "0.1.0",
+  "description": "Machine-friendly run, JSON, cwd, timeout, and doctor adapter for DeepSeek Harness",
+  "type": "module",
+  "bin": {
+    "dshx": "./bin/dshx.mjs"
+  },
+  "exports": {
+    ".": "./lib/core.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check bin/dshx.mjs && node --check lib/core.mjs && npm test",
+    "prepack": "npm run check"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "agent",
+    "headless",
+    "cli",
+    "json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dongsheng123132/dshx.git"
+  },
+  "homepage": "https://github.com/dongsheng123132/dshx#readme",
+  "bugs": "https://github.com/dongsheng123132/dshx/issues",
+  "author": "hfshfg <38004547@qq.com>",
+  "license": "MIT"
+}
