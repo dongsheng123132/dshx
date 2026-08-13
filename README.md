@@ -17,7 +17,13 @@ DeepSeek 负责 Harness Core；`dshx` 补齐脚本和其他 AI 更容易依赖�
 
 ## 安装
 
-仓库发布后可直接从 GitHub 安装：
+从 npm 安装：
+
+```bash
+npm install -g @hfshfg/dshx
+```
+
+也可以锁定 GitHub Release 安装：
 
 ```bash
 npm install -g github:dongsheng123132/dshx#v0.2.0
