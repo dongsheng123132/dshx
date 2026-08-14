@@ -1,6 +1,6 @@
 {
   "name": "dshx",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Run bounded DeepSeek Harness tasks through a stable machine-readable adapter.",
   "author": {
     "name": "hfshfg",

@@ -20,7 +20,7 @@ Require `node_supported`, `dsh_available`, and `api_key_present` to be true befo
 If `dshx` is missing, explain the pinned install command and run it only with user authorization:
 
 ```bash
-npm install -g github:dongsheng123132/dshx#v0.2.0
+npm install -g @hfshfg/dshx@0.2.1
 ```
 
 ## Delegate one task
@@ -51,4 +51,4 @@ Treat stdout as the result channel and stderr as diagnostics. Do not parse ANSI 
 - Do not include API keys or other secrets in task text, argv, or output summaries.
 - Do not use `dsh web` for agent-to-agent delegation; it is the human-facing browser UI.
 - Review DSH changes and test evidence before presenting them as complete.
-- Remember that DeepSeek Harness is Developer Preview and dshx 0.2.0 pins `@deepseek-ai/dsh` 0.1.0-rc.6.
+- Remember that DeepSeek Harness is Developer Preview and dshx 0.2.1 pins `@deepseek-ai/dsh` 0.1.0-rc.6.

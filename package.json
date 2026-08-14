@@ -1,6 +1,6 @@
 {
   "name": "@hfshfg/dshx",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Machine-friendly run, JSON, cwd, timeout, and doctor adapter for DeepSeek Harness",
   "type": "module",
   "bin": {
@@ -30,6 +30,10 @@
     "deepseek",
     "deepseek-harness",
     "agent",
+    "automation",
+    "codex",
+    "claude-code",
+    "openclaw",
     "headless",
     "cli",
     "json"
