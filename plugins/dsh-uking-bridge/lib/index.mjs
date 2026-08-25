@@ -1,0 +1,165 @@
+/**
+ * dsh-uking-bridge 插件入口 —— cordis Plugin.Function。
+ *
+ * `apply(ctx, config)` 在 DSH 装载本插件时执行：拉清单 → 逐动作 defineTool 注册。
+ * **apply 绝不抛**：exe 不在 / 清单拉不到都降级为注册一个 uking_status 工具，
+ * 让模型能回答「U-King 没装/没找到」，而 shell 照常启动。
+ *
+ * 审批门（P1 简化实现）：`confirmation === 'always'` 或 class ∈ {destructive, external}
+ * 的动作**不注册**为工具——P1 的验收标准是「排除项不出现在工具列表」，审批弹窗
+ * 属于 ApprovalService 集成，放 P2（需要 dsh-user-approval 的 UI 面）。
+ * 这样 P1 工具面 = read/never + write/never 两档，全部低风险可直通。
+ */
+import {
+  EXCLUDED_IDS,
+  fetchManifest,
+  resolveExe,
+  runAction,
+} from './core.mjs';
+
+/** 动作 id → DSH 工具名。DSH 工具名惯例是点分小写，与 action id 同形即可读性最好。 */
+function toolName(actionId) {
+  return 'uking_' + actionId.replaceAll('.', '_');
+}
+
+/** 一句话描述：用清单自带的 description，前面挂产品标。 */
+function toolDescription(a) {
+  const risk = a?.effects?.risk ?? 'unknown';
+  return `[U-King] ${a?.description ?? a?.id} (risk: ${risk})`;
+}
+
+export const inject = ['tools'];
+
+export function apply(ctx, config) {
+  // 整个 apply 包在异步任务里：清单拉取不能阻塞插件装载（DSH 启动速度红线）。
+  // cordis fiber 会等 plugin 函数返回；我们把重活丢到 ctx.effect 里自己管生命周期。
+  let disposed = false;
+  const disposers = [];
+  // 🔴 Codex 核实指正：disposer 原来只置 disposed=true，没中止正在跑的 manifest
+  // 子进程（最多残留到 60s 固定超时）。boot 自己持有 AbortController，
+  // disposer 里真正 abort，fetchManifest 内部会杀掉子进程。
+  const bootAbort = new AbortController();
+
+  const boot = (async () => {
+    const exePath = resolveExe(config);
+
+    if (!exePath) {
+      // 找不到 exe：注册 status 工具报告现状，绝不抛。
+      disposers.push(ctx.tools.register(makeStatusTool(null, 'U-King 未安装或未找到 u-king-mini.exe')));
+      return;
+    }
+
+    const manifest = await fetchManifest(exePath, bootAbort.signal);
+    if (disposed) return;
+
+    if (!manifest || manifest.length === 0) {
+      disposers.push(ctx.tools.register(makeStatusTool(exePath, 'U-King 已找到但动作清单拉取失败')));
+      return;
+    }
+
+    let registered = 0;
+    let excluded = 0;
+    for (const a of manifest) {
+      if (disposed) break;
+      const id = a?.id;
+      if (!id || typeof id !== 'string') continue;
+      // 🔴 fail-closed（2026-08-25 Claude Code 核实揪出的 fail-open 漏洞）：
+      // effects 缺失 / class 或 confirmation 不是已知枚举 → 一律按高风险排除。
+      // 宁可少一个工具，绝不默认放行一个未知风险的动作。
+      const cls = a.effects?.class;
+      const conf = a.effects?.confirmation;
+      const KNOWN_CLASSES = new Set(['read', 'write', 'external', 'destructive']);
+      const KNOWN_CONFS = new Set(['never', 'always']);
+      if (!cls || !KNOWN_CLASSES.has(cls) || !conf || !KNOWN_CONFS.has(conf)) { excluded++; continue; }
+      // 双保险排除：显式清单 ∪ destructive 类
+      if (EXCLUDED_IDS.has(id) || cls === 'destructive') { excluded++; continue; }
+      // P1 只直通低风险：confirmation=always（含 external）留 P2 接审批门
+      if (conf === 'always') { excluded++; continue; }
+
+      try {
+        disposers.push(ctx.tools.register(makeActionTool(exePath, a)));
+        registered++;
+      } catch { /* 单个注册失败不拖垮其余 */ }
+    }
+
+    // 自检工具永远注册：模型随时能问「桥接层现在什么状态」
+    disposers.push(ctx.tools.register(makeStatusTool(exePath, `已注册 ${registered} 个 U-King 工具，排除 ${excluded} 个高风险动作`)));
+  })().catch(() => { /* 兜底：boot 失败静默，shell 照常 */ });
+
+  // 卸载清理：disposer 全部执行 + 真正中止未完成的 boot（杀 manifest 子进程）
+  return () => {
+    disposed = true;
+    try { bootAbort.abort(); } catch { /* ignore */ }
+    for (const d of disposers.reverse()) {
+      try { d?.(); } catch { /* ignore */ }
+    }
+  };
+}
+
+/** 用原生 ToolDefinition 形状造一个动作工具。
+ *
+ * 🔴 output.render 是 ToolRuntime.register() 的硬校验项（缺失直接 TypeError，
+ * 见 @deepseek-ai/dsh-tools lib/index.js 注册入口）——手写 definition 时必须补全。
+ * render 把规范值投成模型可见的 ContentBlock[]：这里用 JSON 文本块，纯函数不抛。
+ */
+function makeActionTool(exePath, a) {
+  const def = {
+    name: toolName(a.id),
+    description: toolDescription(a),
+    parameters: sanitizeJsonSchema(a.input_schema),
+    output: {
+      type: 'object',
+      additionalProperties: true,
+      description: '动作的结构化结果；ok=false 时带 error{code,message,blame,retriable}',
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
+    execute: async (args, exec) => {
+      // exec.signal 必须被观察：中止时杀子进程
+      return runAction(exePath, a, a.id, args, exec.signal);
+    },
+    timeoutMs: Math.min((Number(a.execution?.timeout_ms) || 60_000) + 30_000, 86_400_000),
+    isConcurrencySafe: () => a.effects?.class === 'read',
+  };
+  return def;
+}
+
+/** status 工具：桥接层健康自查。（output.render 同为硬校验项，见 makeActionTool 注释） */
+function makeStatusTool(exePath, note) {
+  return {
+    name: 'uking_status',
+    description:
+      '[U-King] 查询 U-King 桥接层状态：exe 是否找到、可用工具数量、诊断信息。' +
+      '当其他 uking_* 工具不可用或结果异常时先用它。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    output: {
+      schema: {
+        type: 'object',
+        properties: { ok: { type: 'boolean' }, exe_found: { type: 'boolean' }, note: { type: 'string' } },
+        required: ['ok'],
+      },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
+    async execute() {
+      return {
+        ok: true,
+        exe_found: Boolean(exePath),
+        exe_path: exePath ?? null,
+        note,
+      };
+    },
+  };
+}
+
+/**
+ * 把 exe 给的 JSON Schema 洗成 DSH ToolSchema.parameters 可接受的普通对象。
+ * 关键约束（dsh-llm ToolSchema）：parameters 是 Record<string, unknown> 的 JSON Schema 对象。
+ * 这里只做保守清洗：非对象/缺 type 时补 object 壳，其余原样透传。
+ */
+function sanitizeJsonSchema(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return { type: 'object', properties: {}, additionalProperties: false };
+  }
+  if (!schema.type) return { ...schema, type: 'object' };
+  return schema;
+}
