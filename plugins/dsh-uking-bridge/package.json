@@ -1,0 +1,25 @@
+{
+  "name": "@hfshfg/dsh-uking-bridge",
+  "version": "0.1.0",
+  "description": "DSH bridge plugin: expose U-King action core (u-king-mini.exe) as DSH tools, policy driven by action effects metadata",
+  "type": "module",
+  "main": "./lib/index.mjs",
+  "files": [
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "check": "node --check lib/index.mjs && node --test \"test/**/*.test.mjs\""
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "u-king"
+  ],
+  "license": "MIT"
+}
