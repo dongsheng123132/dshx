@@ -28,6 +28,8 @@ function toolDescription(a) {
   return `[U-King] ${a?.description ?? a?.id} (risk: ${risk})`;
 }
 
+export const inject = ['tools'];
+
 export function apply(ctx, config) {
   // 整个 apply 包在异步任务里：清单拉取不能阻塞插件装载（DSH 启动速度红线）。
   // cordis fiber 会等 plugin 函数返回；我们把重活丢到 ctx.effect 里自己管生命周期。
@@ -57,10 +59,18 @@ export function apply(ctx, config) {
       if (disposed) break;
       const id = a?.id;
       if (!id || typeof id !== 'string') continue;
+      // 🔴 fail-closed（2026-08-25 Claude Code 核实揪出的 fail-open 漏洞）：
+      // effects 缺失 / class 或 confirmation 不是已知枚举 → 一律按高风险排除。
+      // 宁可少一个工具，绝不默认放行一个未知风险的动作。
+      const cls = a.effects?.class;
+      const conf = a.effects?.confirmation;
+      const KNOWN_CLASSES = new Set(['read', 'write', 'external', 'destructive']);
+      const KNOWN_CONFS = new Set(['never', 'always']);
+      if (!cls || !KNOWN_CLASSES.has(cls) || !conf || !KNOWN_CONFS.has(conf)) { excluded++; continue; }
       // 双保险排除：显式清单 ∪ destructive 类
-      if (EXCLUDED_IDS.has(id) || a.effects?.class === 'destructive') { excluded++; continue; }
+      if (EXCLUDED_IDS.has(id) || cls === 'destructive') { excluded++; continue; }
       // P1 只直通低风险：confirmation=always（含 external）留 P2 接审批门
-      if (a.effects?.confirmation === 'always') { excluded++; continue; }
+      if (conf === 'always') { excluded++; continue; }
 
       try {
         disposers.push(ctx.tools.register(makeActionTool(exePath, a)));
@@ -81,7 +91,12 @@ export function apply(ctx, config) {
   };
 }
 
-/** 用原生 ToolDefinition 形状造一个动作工具（绕开 defineTool 的 schema DSL——我们手里已是 JSON Schema）。 */
+/** 用原生 ToolDefinition 形状造一个动作工具。
+ *
+ * 🔴 output.render 是 ToolRuntime.register() 的硬校验项（缺失直接 TypeError，
+ * 见 @deepseek-ai/dsh-tools lib/index.js 注册入口）——手写 definition 时必须补全。
+ * render 把规范值投成模型可见的 ContentBlock[]：这里用 JSON 文本块，纯函数不抛。
+ */
 function makeActionTool(exePath, a) {
   const def = {
     name: toolName(a.id),
@@ -91,6 +106,8 @@ function makeActionTool(exePath, a) {
       type: 'object',
       additionalProperties: true,
       description: '动作的结构化结果；ok=false 时带 error{code,message,blame,retriable}',
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
     execute: async (args, exec) => {
       // exec.signal 必须被观察：中止时杀子进程
@@ -102,7 +119,7 @@ function makeActionTool(exePath, a) {
   return def;
 }
 
-/** status 工具：桥接层健康自查。 */
+/** status 工具：桥接层健康自查。（output.render 同为硬校验项，见 makeActionTool 注释） */
 function makeStatusTool(exePath, note) {
   return {
     name: 'uking_status',
@@ -110,7 +127,14 @@ function makeStatusTool(exePath, note) {
       '[U-King] 查询 U-King 桥接层状态：exe 是否找到、可用工具数量、诊断信息。' +
       '当其他 uking_* 工具不可用或结果异常时先用它。',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
-    output: { type: 'object', additionalProperties: true },
+    output: {
+      schema: {
+        type: 'object',
+        properties: { ok: { type: 'boolean' }, exe_found: { type: 'boolean' }, note: { type: 'string' } },
+        required: ['ok'],
+      },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
     async execute() {
       return {
         ok: true,

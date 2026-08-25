@@ -135,7 +135,9 @@ function runAction(exePath, actionDef, actionId, input, signal) {
       killed = true;
       try { child.kill(); } catch { /* ignore */ }
     }, timeoutMs);
-    // exec.signal 中止 → 杀进程树（Windows 上 child.kill 杀不掉孙子，但我们只起一层）
+    // exec.signal 中止 → 杀进程树（🔴 假设边界：u-king-mini.exe 的动作执行不二次
+    // fork 子进程；child.kill() 在 Windows 只杀第一层。若 exe 未来引入会 spawn 的
+    // 动作，这里要换 taskkill /T /PID 或 tree-kill，否则超时后留孤儿进程）。
     const onAbort = () => { killed = true; try { child.kill(); } catch { /* ignore */ } };
     signal?.addEventListener('abort', onAbort, { once: true });
     child.stdout.setEncoding('utf8');

@@ -26,7 +26,15 @@ function fakeCtx() {
     signal: undefined,
     tools: {
       register(def) {
+        // 🔴 复现真实 ToolRuntime.register() 的关键校验（Claude Code 核实指正：
+        // 上一版 fake 不校验 output.render，导致「接入真 DSH 全部注册抛错」的
+        // 致命 bug 在 10 条全绿测试里漏网）。校验项对照 dsh-tools 源码。
         if (!def?.name) throw new Error('tool must have name');
+        if (typeof def.execute !== 'function') throw new TypeError(`tool "${def.name}" must declare execute`);
+        const out = def.output;
+        if (out === undefined || typeof out !== 'object' || typeof out.render !== 'function' || !out.schema) {
+          throw new TypeError(`tool "${def.name}" must declare output { schema, render, presentationMeta? }`);
+        }
         if (registered.has(def.name)) throw new Error('duplicate tool ' + def.name);
         registered.set(def.name, def);
         return () => registered.delete(def.name);
@@ -34,6 +42,9 @@ function fakeCtx() {
     },
   };
 }
+
+/** 集成段开关：本机没有 U-King 构建产物时如实上报 skipped（不是假绿）。 */
+const HAS_EXE = existsSync(UKING_EXE);
 
 /** 等 boot 完成（uking_status 出现即 boot 收尾）。 */
 async function waitBoot(ctx, ms = 90000) {
@@ -45,8 +56,7 @@ async function waitBoot(ctx, ms = 90000) {
   throw new Error('boot 超时：uking_status 未注册');
 }
 
-test('apply + 真 exe：read/write 直通，always+destructive 排除，status 在位', { timeout: 120_000 }, async () => {
-  if (!existsSync(UKING_EXE)) return; // 无构建产物时跳过
+test('apply + 真 exe：read/write 直通，always+destructive 排除，status 在位', { timeout: 120_000, skip: !HAS_EXE }, async () => {
   const prev = process.env.UKING_MINI_PATH;
   process.env.UKING_MINI_PATH = UKING_EXE;
   try {
@@ -84,21 +94,18 @@ test('apply + 真 exe：read/write 直通，always+destructive 排除，status �
   }
 });
 
-test('runAction 真 exe：退出码 0 → 解析裸 JSON', { timeout: 60_000 }, async () => {
-  if (!existsSync(UKING_EXE)) return;
+test('runAction 真 exe：退出码 0 → 解析裸 JSON', { timeout: 60_000, skip: !HAS_EXE }, async () => {
   const out = await runAction(UKING_EXE, { execution: { timeout_ms: 30000 } }, 'runtime.readiness.inspect', undefined, undefined);
   assert.equal(out.ok, true);
 });
 
-test('runAction 真 exe：未知动作 → 退出码 2 结构化错误', { timeout: 60_000 }, async () => {
-  if (!existsSync(UKING_EXE)) return;
+test('runAction 真 exe：未知动作 → 退出码 2 结构化错误', { timeout: 60_000, skip: !HAS_EXE }, async () => {
   const out = await runAction(UKING_EXE, null, 'runtime.not.exist', undefined, undefined);
   assert.equal(out.ok, false);
   assert.equal(out.error.code, 'unknown_action');
 });
 
-test('fetchManifest 真 exe：114 个动作、排除项全命中', { timeout: 60_000 }, async () => {
-  if (!existsSync(UKING_EXE)) return;
+test('fetchManifest 真 exe：114 个动作、排除项全命中', { timeout: 60_000, skip: !HAS_EXE }, async () => {
   const manifest = await fetchManifest(UKING_EXE, undefined);
   assert.ok(Array.isArray(manifest));
   const ids = new Set(manifest.map((a) => a.id));
