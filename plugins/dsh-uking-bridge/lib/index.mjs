@@ -35,6 +35,10 @@ export function apply(ctx, config) {
   // cordis fiber 会等 plugin 函数返回；我们把重活丢到 ctx.effect 里自己管生命周期。
   let disposed = false;
   const disposers = [];
+  // 🔴 Codex 核实指正：disposer 原来只置 disposed=true，没中止正在跑的 manifest
+  // 子进程（最多残留到 60s 固定超时）。boot 自己持有 AbortController，
+  // disposer 里真正 abort，fetchManifest 内部会杀掉子进程。
+  const bootAbort = new AbortController();
 
   const boot = (async () => {
     const exePath = resolveExe(config);
@@ -45,7 +49,7 @@ export function apply(ctx, config) {
       return;
     }
 
-    const manifest = await fetchManifest(exePath, ctx.signal ?? undefined);
+    const manifest = await fetchManifest(exePath, bootAbort.signal);
     if (disposed) return;
 
     if (!manifest || manifest.length === 0) {
@@ -82,9 +86,10 @@ export function apply(ctx, config) {
     disposers.push(ctx.tools.register(makeStatusTool(exePath, `已注册 ${registered} 个 U-King 工具，排除 ${excluded} 个高风险动作`)));
   })().catch(() => { /* 兜底：boot 失败静默，shell 照常 */ });
 
-  // 卸载清理：disposer 全部执行 + 中止未完成的 boot
+  // 卸载清理：disposer 全部执行 + 真正中止未完成的 boot（杀 manifest 子进程）
   return () => {
     disposed = true;
+    try { bootAbort.abort(); } catch { /* ignore */ }
     for (const d of disposers.reverse()) {
       try { d?.(); } catch { /* ignore */ }
     }

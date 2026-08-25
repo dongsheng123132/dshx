@@ -114,7 +114,7 @@ function runAction(exePath, actionDef, actionId, input, signal) {
     return Promise.resolve({ ok: false, error: { code: 'spawn_failed', message: '桥接层只接受 .exe，不经过 shell（CVE-2024-27980 + GBK 防线）', blame: 'bug', retriable: false } });
   }
   const baseTimeout = Number(actionDef?.execution?.timeout_ms) || 60_000;
-  const timeoutMs = Math.min(baseTimeout + TIMEOUT_SLACK_MS, 86_400_000);
+  const timeoutMs = baseTimeout + TIMEOUT_SLACK_MS;
   const args = ['action', 'run', actionId, '--json', '--no-input'];
   if (input !== undefined && input !== null && typeof input === 'object' && Object.keys(input).length > 0) {
     args.push('--input', JSON.stringify(input));
@@ -131,6 +131,11 @@ function runAction(exePath, actionDef, actionId, input, signal) {
       return;
     }
     let killed = false;
+    // 🔴 Codex 核实指正：已 aborted 的 signal 不会触发后注册的监听器 ——
+    // spawn 前先查一次，注册后再复查一次，封闭竞态窗口。
+    if (signal?.aborted) {
+      return Promise.resolve({ ok: false, error: { code: 'timeout_or_cancelled', message: `动作 ${actionId} 在启动前已被中止`, blame: 'environment', retriable: true } });
+    }
     const timer = setTimeout(() => {
       killed = true;
       try { child.kill(); } catch { /* ignore */ }
@@ -140,6 +145,7 @@ function runAction(exePath, actionDef, actionId, input, signal) {
     // 动作，这里要换 taskkill /T /PID 或 tree-kill，否则超时后留孤儿进程）。
     const onAbort = () => { killed = true; try { child.kill(); } catch { /* ignore */ } };
     signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) { onAbort(); }
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (d) => { stdout += d; });
@@ -156,7 +162,7 @@ function runAction(exePath, actionDef, actionId, input, signal) {
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
       if (killed) {
-        finish({ ok: false, error: { code: 'timeout_or_cancelled', message: `动作 ${actionId} 超时或被中止`, blame: 'environment', retriable: true }, partial_stdout_bytes: stdout.length });
+        finish({ ok: false, error: { code: 'timeout_or_cancelled', message: `动作 ${actionId} 超时或被中止`, blame: 'environment', retriable: true }, partial_stdout_bytes: Buffer.byteLength(stdout, 'utf8') });
         return;
       }
       // 退出码契约（2026-08-25 对 v1.0.10 全量实测）：
@@ -168,8 +174,20 @@ function runAction(exePath, actionDef, actionId, input, signal) {
         try {
           const result = JSON.parse(stdout);
           finish({ ok: true, action: actionId, result });
-        } catch {
-          finish({ ok: true, action: actionId, raw: stdout.slice(0, 16_000) }); // 非 JSON 的成功输出原样带回（截断保护）
+        } catch (e) {
+          // 🔴 Codex 核实指正：退出码 0 但 stdout 是截断/畸形 JSON 时，
+          // 不能包装成 ok:true —— 协议损坏必须如实报错（截断输出留给诊断）。
+          finish({
+            ok: false,
+            action: actionId,
+            error: {
+              code: 'invalid_json_output',
+              message: `动作 ${actionId} 退出码 0 但输出不是合法 JSON（可能被截断）：${String(e).slice(0, 200)}`,
+              blame: 'bug',
+              retriable: true,
+            },
+            raw_head: stdout.slice(0, 2000),
+          });
         }
         return;
       }

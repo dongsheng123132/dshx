@@ -6,7 +6,7 @@ DSH tools。
 
 属于《U-King DSH 内核化》计划的 **P1 · 桥接插件**（加法，零风险）：不改 U-King 的
 动作核心，不做任何快照——启动时实时拉 `action manifest --json --no-input`，
-按每个动作自带的 `effects` 元数据决定暴露策略。
+按每个动作自带的 `effects` 元数据决定暴露策略（**effects 驱动 + fail-closed**：元数据缺失或枚举未知一律不注册；7 个显式排除 id 是纵深防御，不是黑名单策略本体）。
 
 ## 策略（全部由清单元数据驱动，无黑名单）
 
@@ -37,7 +37,7 @@ DSH tools。
 
 ```bash
 npm install   # 本插件零运行时依赖；测试需要本机已构建 u-king-mini.exe
-npm test      # 10 条：单元（假 exe/拒绝面）+ 集成（真 exe 契约实测）
+npm test      # 12 条：单元（拒绝面/协议边界）+ 集成（真 exe 契约实测，无构建产物自动 skip）
 ```
 
 集成测试默认指向本仓库工作区的 U-King 构建产物，可用

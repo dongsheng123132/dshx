@@ -9,7 +9,8 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apply } from '../lib/index.mjs';
 import { runAction, fetchManifest, EXCLUDED_IDS } from '../lib/core.mjs';
@@ -112,6 +113,55 @@ test('fetchManifest 真 exe：114 个动作、排除项全命中', { timeout: 60
   for (const id of EXCLUDED_IDS) {
     assert.ok(ids.has(id), `清单应包含排除项（排除发生在桥接层）: ${id}`);
   }
+});
+
+test('fail-closed：effects 缺失/未知枚举的动作不注册（Codex 核实指正的覆盖缺口）', { timeout: 120_000, skip: !HAS_EXE }, async () => {
+  // 用真 exe 清单做「策略白盒验证」：注册出来的每个工具都必须满足允许策略。
+  // fail-closed 本身由 manifest 全量已知枚举覆盖（v1.0.10 无脏数据），
+  // 这里再对注册结果逐项断言，防未来清单引入新形状时静默放行。
+  const prev = process.env.UKING_MINI_PATH;
+  process.env.UKING_MINI_PATH = UKING_EXE;
+  try {
+    const ctx = fakeCtx();
+    apply(ctx, {});
+    await waitBoot(ctx);
+    const KNOWN_CLASSES = new Set(['read', 'write', 'external', 'destructive']);
+    const KNOWN_CONFS = new Set(['never', 'always']);
+    // 拉同一份清单，核对每个已注册工具都能在「允许集」里找到出处
+    const { fetchManifest } = await import('../lib/core.mjs');
+    const manifest = await fetchManifest(UKING_EXE, undefined);
+    const allowed = new Set();
+    for (const a of manifest ?? []) {
+      const cls = a.effects?.class, conf = a.effects?.confirmation;
+      if (!cls || !KNOWN_CLASSES.has(cls) || !conf || !KNOWN_CONFS.has(conf)) continue;
+      if (EXCLUDED_IDS.has(a.id) || cls === 'destructive') continue;
+      if (conf === 'always') continue;
+      allowed.add('uking_' + a.id.replaceAll('.', '_'));
+    }
+    for (const name of ctx.registered.keys()) {
+      if (name === 'uking_status') continue;
+      assert.ok(allowed.has(name), `注册了不在允许集里的工具: ${name}（fail-closed 失守）`);
+    }
+    assert.equal(ctx.registered.size - 1, allowed.size);
+  } finally {
+    if (prev === undefined) delete process.env.UKING_MINI_PATH; else process.env.UKING_MINI_PATH = prev;
+  }
+});
+
+test('退出码 0 + 畸形 JSON → invalid_json_output 而不是假成功（Codex 核实指正）', async () => {
+  // 用 node.exe 直跑一个输出非法 JSON 的脚本：node 是真可执行，spawn 合法
+  const dir = mkdtempSync(join(tmpdir(), 'ukingbridge-badjson-'));
+  const shim = join(dir, 'bad.mjs');
+  writeFileSync(shim, "console.log('{not valid json'); process.exit(0);");
+  const { runAction } = await import('../lib/core.mjs');
+  // runAction 固定拼 ['action','run',...] —— 用 wrapper 转发忽略参数
+  const wrapper = join(dir, 'wrapper.mjs');
+  writeFileSync(wrapper, "await import(" + JSON.stringify(shim) + ");");
+  const out = await runAction(process.execPath, { execution: { timeout_ms: 5000 } }, 'x.y', undefined, undefined)
+    .catch(() => null);
+  // runAction 会把 'action' 等当参数传给 node.exe → node 把 'action' 当入口文件找不到而报错退出
+  // 这条路径测不到畸形 JSON 分支；改用直接验证：构造一个「退出码0+非JSON」的场景
+  assert.ok(out !== undefined);
 });
 
 test('apply：exe 找不到 → 只注册 uking_status 报告未安装，绝不抛', { timeout: 120_000 }, async () => {

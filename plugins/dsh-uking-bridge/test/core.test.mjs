@@ -17,45 +17,6 @@ import { EXCLUDED_IDS, fetchManifest, resolveExe, runAction } from '../lib/core.
 
 const NODE = process.execPath;
 
-/** 生成 forward.mjs（argv 形状与 u-king-mini.exe 相同的替身）+ 行为 shim。 */
-function makeFakeExe(dir, behavior) {
-  const shim = join(dir, `shim-${behavior}.mjs`);
-  writeFileSync(shim, `
-const args = process.argv.slice(2); // [action, run|manifest, ...]
-if (${JSON.stringify(behavior)} === 'manifest-ok') {
-  if (args[0] === 'action' && args[1] === 'manifest') {
-    const actions = [
-      { id: 'a.read', description: '读', effects: { class: 'read', confirmation: 'never', risk: 'low' }, execution: { timeout_ms: 5000 }, input_schema: { type: 'object', properties: {} } },
-      { id: 'b.write', description: '写', effects: { class: 'write', confirmation: 'never', risk: 'medium' }, execution: { timeout_ms: 8000 }, input_schema: { type: 'object', properties: {} } },
-      { id: 'c.always', description: '要审批', effects: { class: 'external', confirmation: 'always', risk: 'medium' }, execution: { timeout_ms: 5000 }, input_schema: { type: 'object', properties: {} } },
-      { id: 'd.destructive', description: '毁灭', effects: { class: 'destructive', confirmation: 'always', risk: 'high' }, execution: { timeout_ms: 5000 }, input_schema: { type: 'object', properties: {} } },
-    ];
-    console.log(JSON.stringify({ actions }));
-    process.exit(0);
-  }
-}
-if (${JSON.stringify(behavior)} === 'run-ok') {
-  const i = args.indexOf('--input');
-  const input = i >= 0 ? JSON.parse(args[i + 1]) : {};
-  console.log(JSON.stringify({ ok: true, echoed: input }));
-  process.exit(0);
-}
-if (${JSON.stringify(behavior)} === 'run-err') {
-  console.log(JSON.stringify({ ok: false, error: { code: 'conflict', message: '状态冲突', blame: 'environment', retriable: false } }));
-  process.exit(2);
-}
-setTimeout(() => {}, 60000); // run-hang：永不主动退出
-process.exit(9);
-`);
-  // 「exe」= node.exe 本身；但 argv[1] 必须是 forward 脚本 —— 用 NODE_OPTIONS 无法注入，
-  // 所以这里返回一个可执行的「组合」：core.mjs 的 spawn(exePath, args) 需要
-  // exePath=node 且 args 前面有 forward。为不破坏生产 argv 契约，测试改用
-  // makeForwardExe 生成的 .exe 替身 = 一个导出 spawn 兼容对象？——不行。
-  // 最终方案：forward.mjs 自身路径作为 exePath 传给 Windows 的 cmd 解释是不允许的；
-  // 因此 fetchManifest/runAction 测试统一通过 injectSpawnPrefix 注入点完成（见下）。
-  return shim;
-}
-
 test('EXCLUDED_IDS 与计划 §2 的 7 个排除项一致', () => {
   assert.equal(EXCLUDED_IDS.size, 7);
   for (const id of ['runtime.provider.delete', 'runtime.identity.secret_set']) {
