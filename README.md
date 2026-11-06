@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@hfshfg/dshx)](https://www.npmjs.com/package/@hfshfg/dshx)
 [![skills.sh](https://skills.sh/b/dongsheng123132/dshx)](https://skills.sh/dongsheng123132/dshx/dshx)
 
-作者 / Author：贺去病（贺方升 / Dosen）· [hequbing.com](https://www.hequbing.com) · DeepSeek Harness 自研适配层
+作者 / Author：He Fangsheng (贺方升 / 贺去病; Dosen)· [hequbing.com](https://www.hequbing.com) · DeepSeek Harness 自研适配层
 
 ![dshx — DeepSeek Harness, made scriptable](https://raw.githubusercontent.com/dongsheng123132/dshx/main/assets/social-preview.png)
 
